@@ -1,4 +1,5 @@
-﻿import React, { useState, useEffect, useCallback } from "react";
+﻿import AIScheduleModal from "../components/AIScheduleModal";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { scheduleAPI, subjectsAPI } from "../services/api";
 
@@ -11,12 +12,10 @@ const Icon = ({ name, filled = false, className = "" }) => (
   </span>
 );
 
-// ── Accent colours keyed by colorIdx ─────────────────────────────────────────
 const ACCENT_COLORS = ["#5150b1", "#006769", "#8d4f0e", "#ba1a1a", "#5150b1", "#268083"];
 
 function getAccent(session) {
   if (session.colorIdx != null) return ACCENT_COLORS[session.colorIdx % ACCENT_COLORS.length];
-  // Hash subject name as fallback
   const name = session.subjectName || "";
   let h = 0;
   for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
@@ -24,24 +23,23 @@ function getAccent(session) {
 }
 
 const STATUS_CONFIG = {
-  pending:   { label: "Pending",   bg: "bg-[#ffdcc2]",     text: "text-[#6d3900]"  },
-  completed: { label: "Completed", bg: "bg-[#006769]/10",  text: "text-[#006769]"  },
-  skipped:   { label: "Skipped",   bg: "bg-[#ffdad6]",     text: "text-[#93000a]"  },
+  pending:   { label: "Pending",   bg: "bg-[#ffdcc2]",    text: "text-[#6d3900]" },
+  completed: { label: "Completed", bg: "bg-[#006769]/10", text: "text-[#006769]" },
+  skipped:   { label: "Skipped",   bg: "bg-[#ffdad6]",    text: "text-[#93000a]" },
 };
 
-// ── Generate Mon–Sun of the current week ──────────────────────────────────────
 function buildWeek() {
-  const today     = new Date();
-  const dow       = today.getDay();                          // 0 = Sun
-  const offset    = dow === 0 ? -6 : 1 - dow;              // shift to Monday
-  const monday    = new Date(today);
+  const today  = new Date();
+  const dow    = today.getDay();
+  const offset = dow === 0 ? -6 : 1 - dow;
+  const monday = new Date(today);
   monday.setDate(today.getDate() + offset);
 
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
     return {
-      key:      d.toISOString().split("T")[0],              // YYYY-MM-DD
+      key:      d.toISOString().split("T")[0],
       label:    d.toLocaleDateString("en-US", { weekday: "short" }),
       date:     String(d.getDate()),
       month:    d.toLocaleDateString("en-US", { month: "short" }),
@@ -51,11 +49,9 @@ function buildWeek() {
   });
 }
 
-// ── Normalise API session → consistent shape ──────────────────────────────────
 function normalizeSession(s) {
-  // Backend populates subjectId not subject
-  const subjectObj = s.subjectId && typeof s.subjectId === "object" 
-    ? s.subjectId 
+  const subjectObj = s.subjectId && typeof s.subjectId === "object"
+    ? s.subjectId
     : (typeof s.subject === "object" ? s.subject : null);
   const topicObj = s.topicId && typeof s.topicId === "object"
     ? s.topicId
@@ -83,12 +79,11 @@ function normalizeSession(s) {
     status:      s.status ?? "pending",
   };
 }
-// ── Skeleton block ────────────────────────────────────────────────────────────
+
 function Skeleton({ className = "" }) {
   return <div className={`animate-pulse bg-[#e2e3dc] rounded-[24px] ${className}`} />;
 }
 
-// ── Session Card ──────────────────────────────────────────────────────────────
 function SessionCard({ session, onToggleStatus, onStart }) {
   const accent      = getAccent(session);
   const sc          = STATUS_CONFIG[session.status] ?? STATUS_CONFIG.pending;
@@ -96,15 +91,12 @@ function SessionCard({ session, onToggleStatus, onStart }) {
 
   return (
     <div className="bg-white rounded-[24px] shadow-sm border border-[#c7c5d4]/20 overflow-hidden flex">
-      {/* Left accent bar */}
       <div className="w-1.5 flex-shrink-0 rounded-l-[24px]" style={{ background: accent }} />
-      {/* Time column */}
       <div className="flex flex-col items-center justify-start px-3 py-4 flex-shrink-0 min-w-[52px]">
         <span className="text-[11px] font-bold text-[#464552]">{session.startTime}</span>
         <div className="w-px flex-1 bg-[#c7c5d4] my-1.5 min-h-[24px]" />
         <span className="text-[11px] font-bold text-[#464552]">{session.endTime}</span>
       </div>
-      {/* Content */}
       <div className="flex-1 py-4 pr-4 space-y-2">
         <div className="flex items-center justify-between flex-wrap gap-1">
           <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: `${accent}20`, color: accent }}>
@@ -143,31 +135,30 @@ function SessionCard({ session, onToggleStatus, onStart }) {
   );
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function SchedulePage() {
-  const navigate  = useNavigate();
-  const DAYS      = buildWeek();
-  const todayKey  = new Date().toISOString().split("T")[0];
+  const navigate = useNavigate();
+  const DAYS     = buildWeek();
+  const todayKey = new Date().toISOString().split("T")[0];
 
-  const [activeDay,  setActiveDay]  = useState(todayKey);
-  const [sessions,   setSessions]   = useState([]);
-  const [loading,    setLoading]    = useState(true);
-  const [subjects,   setSubjects]   = useState([]);    // for add sheet dropdown
-  const [sheetOpen,  setSheetOpen]  = useState(false);
-  const [saving,     setSaving]     = useState(false);
+  const [activeDay,   setActiveDay]   = useState(todayKey);
+  const [sessions,    setSessions]    = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [subjects,    setSubjects]    = useState([]);
+  const [showAIModal, setShowAIModal] = useState(false);
+  const [sheetOpen,   setSheetOpen]   = useState(false);
+  const [saving,      setSaving]      = useState(false);
 
-  // Add session form state
   const [newSubject,   setNewSubject]   = useState("");
   const [newTopic,     setNewTopic]     = useState("");
   const [newStartTime, setNewStartTime] = useState("09:00");
   const [newEndTime,   setNewEndTime]   = useState("10:00");
 
-  // ── Fetch sessions for selected day ───────────────────────────────────────
+  // ── Fetch sessions ─────────────────────────────────────────────────────────
   const fetchSessions = useCallback(async (date) => {
     setLoading(true);
     try {
       const res  = await scheduleAPI.getAll({ date });
-       const data = Array.isArray(res.data) ? res.data : res.data?.schedule ?? res.data?.sessions ?? [];
+      const data = Array.isArray(res.data) ? res.data : res.data?.schedule ?? res.data?.sessions ?? [];
       setSessions(data.map(normalizeSession));
     } catch {
       setSessions([]);
@@ -188,7 +179,7 @@ export default function SchedulePage() {
       .catch((err) => console.error("Subjects fetch error:", err));
   }, []);
 
-  // ── Optimistic status toggle (pending ↔ completed) ────────────────────────
+  // ── Status toggle ──────────────────────────────────────────────────────────
   const toggleStatus = async (session) => {
     const next     = session.status === "completed" ? "pending" : "completed";
     const original = session.status;
@@ -204,9 +195,9 @@ export default function SchedulePage() {
   const startSession = (session) => {
     navigate("/focus", {
       state: {
-        sessionId:   session._id,
-        subject:     session.subjectName,
-        topic:       session.topicName,
+        sessionId: session._id,
+        subject:   session.subjectName,
+        topic:     session.topicName,
       },
     });
   };
@@ -220,41 +211,36 @@ export default function SchedulePage() {
   const closeSheet = () => { setSheetOpen(false); document.body.style.overflow = ""; };
 
   // ── Save new session ───────────────────────────────────────────────────────
-const saveSession = async () => {
-  if (!newSubject.trim()) return;
-  setSaving(true);
-  try {
-    // Find the selected subject object to get its real _id
-    const subjectObj = subjects.find((s) => s._id === newSubject);
+  const saveSession = async () => {
+    if (!newSubject.trim()) return;
+    setSaving(true);
+    try {
+      const subjectObj = subjects.find((s) => s._id === newSubject);
+      const payload = {
+        subjectId: newSubject,
+        topicId:   undefined,
+        date:      activeDay,
+        startTime: newStartTime,
+        endTime:   newEndTime,
+        type:      "focus",
+      };
+      const res     = await scheduleAPI.create(payload);
+      const created = res.data?.scheduleItem ?? res.data;
+      const display = normalizeSession({
+        ...created,
+        subject: subjectObj ?? { name: newSubject },
+      });
+      setSessions((prev) =>
+        [...prev, display].sort((a, b) => a.startTime.localeCompare(b.startTime))
+      );
+      closeSheet();
+    } catch (err) {
+      console.error("Schedule save error:", err.response?.data);
+    } finally {
+      setSaving(false);
+    }
+  };
 
-    const payload = {
-      subjectId:  newSubject,           // backend expects subjectId (MongoDB ObjectId)
-      topicId:    undefined,            // optional
-      date:       activeDay,            // YYYY-MM-DD
-      startTime:  newStartTime,
-      endTime:    newEndTime,
-      type:       "focus",
-    };
-
-    const res     = await scheduleAPI.create(payload);
-    const created = res.data?.scheduleItem ?? res.data;
-
-    // Normalise for display
-    const display = normalizeSession({
-      ...created,
-      subject: subjectObj ?? { name: newSubject },
-    });
-
-    setSessions((prev) =>
-      [...prev, display].sort((a, b) => a.startTime.localeCompare(b.startTime))
-    );
-    closeSheet();
-  } catch (err) {
-    console.error("Schedule save error:", err.response?.data);
-  } finally {
-    setSaving(false);
-  }
-};
   // ── Derived ────────────────────────────────────────────────────────────────
   const dayInfo    = DAYS.find((d) => d.key === activeDay) ?? DAYS[0];
   const isWeekend  = ["Sat", "Sun"].some((w) => dayInfo.label.startsWith(w.slice(0, 2)));
@@ -302,7 +288,6 @@ const saveSession = async () => {
             >
               <span className="text-[10px] font-bold uppercase tracking-wider">{d.label}</span>
               <span className="font-bold text-lg leading-none">{d.date}</span>
-              {/* Today dot */}
               {d.isToday && d.key !== activeDay && (
                 <div className="w-1.5 h-1.5 rounded-full bg-[#5150b1] absolute bottom-1.5" />
               )}
@@ -314,11 +299,28 @@ const saveSession = async () => {
         <div>
           <h2 className="font-bold text-xl text-[#1a1c18]">
             {dayInfo.fullName}, {dayInfo.date} {dayInfo.month}
-            {dayInfo.isToday && <span className="ml-2 text-xs font-bold text-[#5150b1] bg-[#5150b1]/10 px-2 py-0.5 rounded-full">Today</span>}
+            {dayInfo.isToday && (
+              <span className="ml-2 text-xs font-bold text-[#5150b1] bg-[#5150b1]/10 px-2 py-0.5 rounded-full">Today</span>
+            )}
           </h2>
           <p className="text-sm text-[#464552] mt-0.5">
             {loading ? "Loading…" : isRestDay ? "Rest day — recharge your batteries!" : summaryText || "No sessions yet"}
           </p>
+        </div>
+
+        {/* AI Generate Banner */}
+        <div
+          className="bg-gradient-to-r from-[#5150b1] to-[#7b7ae0] rounded-[20px] p-4 flex items-center gap-3 cursor-pointer shadow-md active:scale-[0.98] transition-transform"
+          onClick={() => setShowAIModal(true)}
+        >
+          <div className="w-10 h-10 bg-white/20 rounded-[14px] flex items-center justify-center flex-shrink-0">
+            <Icon name="auto_awesome" filled className="text-white text-[22px]" />
+          </div>
+          <div className="flex-1">
+            <p className="text-white font-bold text-sm leading-tight">Generate with AI ✨</p>
+            <p className="text-white/70 text-xs mt-0.5">Auto-build your weekly study plan</p>
+          </div>
+          <Icon name="arrow_forward_ios" className="text-white/60 text-[14px]" />
         </div>
 
         {/* Sessions */}
@@ -359,7 +361,7 @@ const saveSession = async () => {
           </div>
         )}
 
-        {/* AI Regenerate Banner */}
+        {/* AI Regenerate Banner (coming soon) */}
         <div className="bg-[#5150b1]/10 rounded-[28px] p-5 border border-[#5150b1]/10 relative overflow-hidden">
           <div className="absolute -right-4 -top-4 opacity-10 pointer-events-none">
             <Icon name="auto_awesome" className="text-[#5150b1]" style={{ fontSize: "100px" }} />
@@ -370,7 +372,7 @@ const saveSession = async () => {
             </div>
             <div>
               <p className="font-bold text-sm text-[#1a1c18]">Reschedule missed sessions?</p>
-              <p className="text-xs text-[#464552]">AI can reorganize your plan — coming in Phase 4</p>
+              <p className="text-xs text-[#464552]">AI can reorganize your plan — coming soon</p>
             </div>
           </div>
           <button className="w-full py-3 bg-[#5150b1] text-white rounded-full font-bold text-sm active:scale-95 transition-transform shadow-lg opacity-60 cursor-not-allowed">
@@ -403,20 +405,24 @@ const saveSession = async () => {
         })}
       </nav>
 
-      {/* Backdrop */}
-      {sheetOpen && <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60]" onClick={closeSheet} />}
+      {/* Backdrop for add-session sheet */}
+      {sheetOpen && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60]" onClick={closeSheet} />
+      )}
 
       {/* Add Session Bottom Sheet */}
       <div
         className="fixed bottom-0 left-0 right-0 bg-[#f9faf3] rounded-t-[36px] z-[70] p-6 max-w-[480px] mx-auto shadow-2xl"
-        style={{ transform: sheetOpen ? "translateY(0)" : "translateY(100%)", transition: "transform 0.4s cubic-bezier(0.32,0.72,0,1)" }}
+        style={{
+          transform:  sheetOpen ? "translateY(0)" : "translateY(100%)",
+          transition: "transform 0.4s cubic-bezier(0.32,0.72,0,1)",
+        }}
       >
         <div className="w-10 h-1.5 bg-[#c7c5d4] rounded-full mx-auto mb-5" />
         <h2 className="font-bold text-xl text-[#1a1c18] mb-1">Add Session</h2>
         <p className="text-xs text-[#464552] mb-5">{dayInfo.fullName}, {dayInfo.date} {dayInfo.month}</p>
 
         <div className="space-y-4">
-
           {/* Subject */}
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-[#464552] px-1">Subject</label>
@@ -442,7 +448,9 @@ const saveSession = async () => {
 
           {/* Topic */}
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[#464552] px-1">Topic <span className="text-[#c7c5d4] font-normal">(optional)</span></label>
+            <label className="text-xs font-semibold text-[#464552] px-1">
+              Topic <span className="text-[#c7c5d4] font-normal">(optional)</span>
+            </label>
             <input
               type="text" value={newTopic} onChange={(e) => setNewTopic(e.target.value)}
               placeholder="e.g. Calculus Derivatives"
@@ -484,6 +492,17 @@ const saveSession = async () => {
           </div>
         </div>
       </div>
+
+      {/* ── AI Schedule Modal ── */}
+      {showAIModal && (
+        <AIScheduleModal
+          onClose={() => setShowAIModal(false)}
+          onScheduleCreated={() => {
+            setShowAIModal(false);
+            fetchSessions(activeDay);
+          }}
+        />
+      )}
 
     </div>
   );
