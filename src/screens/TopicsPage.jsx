@@ -175,30 +175,30 @@ export default function TopicsPage() {
   const closeSheet = () => { setSheetOpen(false); document.body.style.overflow = ""; };
 
   // ── Create topic ───────────────────────────────────────────────────────────
-  const saveTopic = async () => {
-    if (!newName.trim()) return;
-    setSaving(true);
-    const payload = {
-      name:          newName.trim(),
-      subject:       subjectId,
-      estimatedTime: newTime ? Number(newTime) : 1,
-      difficulty:    newDiff,
-      status:        newStatus,
-      notes:         newNotes,
-    };
-    try {
-      const res     = await topicsAPI.create(payload);
-      const created = res.data?.topic ?? res.data;
-      setTopics((prev) => [...prev, normalizeTopic({ ...payload, ...created }, prev.length)]);
-      setFilter("all");
-      closeSheet();
-    } catch (err) {
-      setError(err.response?.data?.message || "Failed to save topic.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
+const saveTopic = async () => {
+  if (!newName.trim()) return;
+  setSaving(true);
+  const payload = {
+  name:          newName.trim(),
+  subjectId:     subjectId,
+  estimatedTime: newTime ? Number(newTime) : 1,
+  difficulty:    newDiff.toLowerCase(),   // ← add .toLowerCase()
+  status:        newStatus,
+  notes:         newNotes,
+};
+  try {
+    const res     = await topicsAPI.create(payload);
+    const created = res.data?.topic ?? res.data;
+    setTopics((prev) => [...prev, normalizeTopic({ ...payload, ...created }, prev.length)]);
+    setFilter("all");
+    closeSheet();
+  } catch (err) {
+    console.error("FULL ERROR:", err.response);   // ← ADD THIS LINE
+    setError(err.response?.data?.message || "Failed to save topic.");
+  } finally {
+    setSaving(false);
+  }
+};
   // ── Optimistic status change + API ────────────────────────────────────────
   const changeStatus = async (id, newSt) => {
     const original = topics.find((t) => t._id === id)?.status;

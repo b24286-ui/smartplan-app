@@ -360,28 +360,7 @@ export default function SchedulePage() {
             ))}
           </div>
         )}
-
-        {/* AI Regenerate Banner (coming soon) */}
-        <div className="bg-[#5150b1]/10 rounded-[28px] p-5 border border-[#5150b1]/10 relative overflow-hidden">
-          <div className="absolute -right-4 -top-4 opacity-10 pointer-events-none">
-            <Icon name="auto_awesome" className="text-[#5150b1]" style={{ fontSize: "100px" }} />
-          </div>
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-9 h-9 rounded-full bg-[#5150b1]/20 flex items-center justify-center flex-shrink-0">
-              <Icon name="auto_awesome" filled className="text-[#5150b1] text-[18px]" />
-            </div>
-            <div>
-              <p className="font-bold text-sm text-[#1a1c18]">Reschedule missed sessions?</p>
-              <p className="text-xs text-[#464552]">AI can reorganize your plan — coming soon</p>
-            </div>
-          </div>
-          <button className="w-full py-3 bg-[#5150b1] text-white rounded-full font-bold text-sm active:scale-95 transition-transform shadow-lg opacity-60 cursor-not-allowed">
-            Regenerate Plan
-          </button>
-        </div>
-
       </main>
-
       {/* Bottom Nav */}
       <nav className="fixed bottom-4 left-1/2 -translate-x-1/2 w-[92%] max-w-[440px] h-[68px] rounded-full z-50 bg-[#2f312d] shadow-xl flex justify-around items-center px-3">
         {[

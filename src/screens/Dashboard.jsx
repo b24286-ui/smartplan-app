@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { analyticsAPI, scheduleAPI } from "../services/api";
 import PostSessionQuiz from "../components/PostSessionQuiz";
+import RescheduleModal from "../components/RescheduleModal";
 
 const Icon = ({ name, filled = false, className = "" }) => (
   <span
@@ -17,11 +18,9 @@ const Icon = ({ name, filled = false, className = "" }) => (
 function getInitials(name = "") {
   return name.trim().split(/\s+/).map((w) => w[0]?.toUpperCase() || "").join("").slice(0, 2) || "?";
 }
-
 function getTodayLabel() {
   return new Date().toLocaleDateString("en-US", { weekday: "short", day: "numeric", month: "short" });
 }
-
 function formatTime(timeStr) {
   if (!timeStr) return "";
   const [h, m] = timeStr.split(":").map(Number);
@@ -29,14 +28,12 @@ function formatTime(timeStr) {
   const hour   = h % 12 || 12;
   return `${hour}:${String(m).padStart(2, "0")} ${suffix}`;
 }
-
 function calcDurationMins(startTime, endTime) {
   if (!startTime || !endTime) return 25;
   const [sh, sm] = startTime.split(":").map(Number);
   const [eh, em] = endTime.split(":").map(Number);
   return Math.max((eh * 60 + em) - (sh * 60 + sm), 1);
 }
-
 function getTimeStatus(item) {
   if (item.status === "completed") return "completed";
   if (item.status === "skipped")   return "missed";
@@ -52,12 +49,10 @@ function getTimeStatus(item) {
   return "pending";
 }
 
-// ── Skeleton ──────────────────────────────────────────────────────────────────
 function Skeleton({ className = "" }) {
   return <div className={`animate-pulse bg-[#e2e3dc] rounded-2xl ${className}`} />;
 }
 
-// ── Static data ───────────────────────────────────────────────────────────────
 const quickActions = [
   { bg: "bg-[#81d4d6]/20", icon: "psychology",     color: "text-[#006769]", label: "Generate Quiz", route: "/quiz"      },
   { bg: "bg-[#e2dfff]/30", icon: "calendar_month", color: "text-[#5150b1]", label: "View Schedule", route: "/schedule"  },
@@ -66,47 +61,42 @@ const quickActions = [
 ];
 
 export default function Dashboard() {
-  const navigate  = useNavigate();
-  const location  = useLocation();
-  const { user }  = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
 
   // ── State ─────────────────────────────────────────────────────────────────
-  const [loading,      setLoading]      = useState(true);
-  const [analytics,    setAnalytics]    = useState(null);
-  const [todayPlan,    setTodayPlan]    = useState([]);
-  const [weakSubjects, setWeakSubjects] = useState([]);
+  const [loading,         setLoading]         = useState(true);
+  const [analytics,       setAnalytics]       = useState(null);
+  const [todayPlan,       setTodayPlan]       = useState([]);
+  const [weakSubjects,    setWeakSubjects]    = useState([]);
+  const [rescheduleTarget, setRescheduleTarget] = useState(null); // ← AI reschedule
 
-  // Quiz state — separate: what session needs quiz vs modal visibility
+  // Quiz state
   const [pendingQuiz, setPendingQuiz] = useState(() => {
-  const fromNav = location.state?.pendingQuizSession;
-  if (fromNav) return fromNav;
-  try { return JSON.parse(localStorage.getItem("sp_pending_quiz") ?? "null"); } catch { return null; }
-});
-const [showQuizModal, setShowQuizModal] = useState(!!location.state?.pendingQuizSession);
+    const fromNav = location.state?.pendingQuizSession;
+    if (fromNav) return fromNav;
+    try { return JSON.parse(localStorage.getItem("sp_pending_quiz") ?? "null"); } catch { return null; }
+  });
+  const [showQuizModal, setShowQuizModal] = useState(!!location.state?.pendingQuizSession);
 
-  // Clear location state so quiz doesn't re-appear on hard refresh
   useEffect(() => {
-    if (location.state?.pendingQuizSession) {
-      window.history.replaceState({}, document.title);
-    }
+    if (location.state?.pendingQuizSession) window.history.replaceState({}, document.title);
   }, []); // eslint-disable-line
 
   useEffect(() => {
-  if (pendingQuiz) {
-    localStorage.setItem("sp_pending_quiz", JSON.stringify(pendingQuiz));
-  } else {
-    localStorage.removeItem("sp_pending_quiz");
-  }
-}, [pendingQuiz]);
+    if (pendingQuiz) localStorage.setItem("sp_pending_quiz", JSON.stringify(pendingQuiz));
+    else             localStorage.removeItem("sp_pending_quiz");
+  }, [pendingQuiz]);
 
-  // ── Auto-mark missed (skip sessions with pending quiz) ────────────────────
+  // ── Auto-mark missed ──────────────────────────────────────────────────────
   const autoMarkMissed = useCallback(async (sessions, quizPending) => {
     const now    = new Date();
     const curMin = now.getHours() * 60 + now.getMinutes();
     for (const s of sessions) {
       if (s.status !== "pending") continue;
       if (!s.endTime) continue;
-      if (quizPending?.sessionId === s._id) continue; // ← never mark quiz-pending as missed
+      if (quizPending?.sessionId === s._id) continue;
       const [eh, em] = s.endTime.split(":").map(Number);
       if (curMin > eh * 60 + em) {
         try { await scheduleAPI.update(s._id, { status: "skipped" }); } catch {}
@@ -118,34 +108,23 @@ const [showQuizModal, setShowQuizModal] = useState(!!location.state?.pendingQuiz
   const fetchDashboard = useCallback(async () => {
     setLoading(true);
     const today = new Date().toISOString().split("T")[0];
-
     const [summaryRes, scheduleRes, subjectsRes] = await Promise.allSettled([
       analyticsAPI.getSummary(),
       scheduleAPI.getAll({ date: today }),
       analyticsAPI.getSubjects(),
     ]);
-
-    if (summaryRes.status === "fulfilled") {
-      setAnalytics(summaryRes.value.data);
-    }
-
+    if (summaryRes.status  === "fulfilled") setAnalytics(summaryRes.value.data);
     if (scheduleRes.status === "fulfilled") {
       const data     = scheduleRes.value.data;
       const planData = Array.isArray(data) ? data : data?.schedule ?? data?.sessions ?? [];
       setTodayPlan(planData);
-      // Pass current pendingQuiz so it's never marked missed
-      setPendingQuiz((currentQuiz) => {
-        autoMarkMissed(planData, currentQuiz);
-        return currentQuiz;
-      });
+      setPendingQuiz((currentQuiz) => { autoMarkMissed(planData, currentQuiz); return currentQuiz; });
     }
-
     if (subjectsRes.status === "fulfilled") {
       const data     = subjectsRes.value.data;
       const subjects = Array.isArray(data) ? data : data?.subjects ?? [];
       setWeakSubjects(subjects.filter((s) => (s.score ?? s.progress ?? 100) < 60).slice(0, 3));
     }
-
     setLoading(false);
   }, [autoMarkMissed]);
 
@@ -155,20 +134,17 @@ const [showQuizModal, setShowQuizModal] = useState(!!location.state?.pendingQuiz
   const toggleStatus = async (session) => {
     const newStatus = session.status === "completed" ? "pending" : "completed";
     setTodayPlan((prev) => prev.map((s) => s._id === session._id ? { ...s, status: newStatus } : s));
-    try {
-      await scheduleAPI.update(session._id, { status: newStatus });
-    } catch {
-      setTodayPlan((prev) => prev.map((s) => s._id === session._id ? { ...s, status: session.status } : s));
-    }
+    try { await scheduleAPI.update(session._id, { status: newStatus }); }
+    catch { setTodayPlan((prev) => prev.map((s) => s._id === session._id ? { ...s, status: session.status } : s)); }
   };
 
   // ── Derived ───────────────────────────────────────────────────────────────
-  const firstName   = user?.name?.split(" ")[0] || "there";
-  const initials    = getInitials(user?.name);
-  const streak      = analytics?.streak   ?? 0;
-  const progress    = analytics?.progress ?? analytics?.weeklyProgress ?? 0;
-  const level       = analytics?.level    ?? 1;
-  const xp          = analytics?.xp       ?? analytics?.totalXP ?? 0;
+  const firstName     = user?.name?.split(" ")[0] || "there";
+  const initials      = getInitials(user?.name);
+  const streak        = analytics?.streak   ?? 0;
+  const progress      = analytics?.progress ?? analytics?.weeklyProgress ?? 0;
+  const level         = analytics?.level    ?? 1;
+  const xp            = analytics?.xp       ?? analytics?.totalXP ?? 0;
   const upcomingExams = todayPlan.filter((s) => s.type === "exam").slice(0, 3);
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -194,7 +170,7 @@ const [showQuizModal, setShowQuizModal] = useState(!!location.state?.pendingQuiz
 
         <div className="px-5 flex flex-col gap-5 mt-1">
 
-          {/* ── Streak + Progress Card ─────────────────────────────────────── */}
+          {/* ── Streak + Progress Card ──────────────────────────────────────── */}
           {loading ? (
             <Skeleton className="h-[120px] rounded-[32px]" />
           ) : (
@@ -228,7 +204,7 @@ const [showQuizModal, setShowQuizModal] = useState(!!location.state?.pendingQuiz
             </section>
           )}
 
-          {/* ── Today's Plan ──────────────────────────────────────────────── */}
+          {/* ── Today's Plan ───────────────────────────────────────────────── */}
           <section>
             <div className="flex justify-between items-center mb-3">
               <h2 className="font-bold text-lg text-[#1a1c18]">Today's Plan</h2>
@@ -256,16 +232,15 @@ const [showQuizModal, setShowQuizModal] = useState(!!location.state?.pendingQuiz
                 {[...todayPlan]
                   .sort((a, b) => (a.startTime ?? "").localeCompare(b.startTime ?? ""))
                   .map((item) => {
-                    const subjectName  = item.subjectId?.name ?? item.subject?.name ?? item.subject ?? "Session";
-                    const topicName    = item.topicId?.name   ?? item.topic?.name   ?? item.topic   ?? "";
-                    const timeLabel    = item.startTime && item.endTime
+                    const subjectName = item.subjectId?.name ?? item.subject?.name ?? item.subject ?? "Session";
+                    const topicName   = item.topicId?.name   ?? item.topic?.name   ?? item.topic   ?? "";
+                    const timeLabel   = item.startTime && item.endTime
                       ? `${formatTime(item.startTime)} - ${formatTime(item.endTime)}`
                       : item.time ?? "";
 
-                    // If this session has a pending quiz, never show as missed
-                    const hasPendingQuiz   = pendingQuiz?.sessionId === item._id;
-                    const rawStatus        = getTimeStatus(item);
-                    const effectiveStatus  = hasPendingQuiz && rawStatus === "missed" ? "pending" : rawStatus;
+                    const hasPendingQuiz  = pendingQuiz?.sessionId === item._id;
+                    const rawStatus       = getTimeStatus(item);
+                    const effectiveStatus = hasPendingQuiz && rawStatus === "missed" ? "pending" : rawStatus;
 
                     const cardBg =
                       effectiveStatus === "completed" ? "bg-[#f3f4ed] opacity-75"
@@ -288,11 +263,8 @@ const [showQuizModal, setShowQuizModal] = useState(!!location.state?.pendingQuiz
                             {topicName && <p className="text-[#464552] text-xs mt-0.5 truncate">{topicName}</p>}
                           </div>
 
-                          {/* Status badge — quiz-pending overrides missed */}
                           {hasPendingQuiz ? (
-                            <span className="px-3 py-1 bg-[#feac66]/30 text-[#6d3900] rounded-full text-[11px] font-bold flex-shrink-0">
-                              Quiz Ready ✨
-                            </span>
+                            <span className="px-3 py-1 bg-[#feac66]/30 text-[#6d3900] rounded-full text-[11px] font-bold flex-shrink-0">Quiz Ready ✨</span>
                           ) : effectiveStatus === "completed" ? (
                             <span className="px-3 py-1 bg-[#006769]/10 text-[#006769] rounded-full text-[11px] font-bold flex-shrink-0">Done ✓</span>
                           ) : effectiveStatus === "missed" ? (
@@ -313,7 +285,7 @@ const [showQuizModal, setShowQuizModal] = useState(!!location.state?.pendingQuiz
                             </div>
                           ) : <div />}
 
-                          {/* Take Quiz button — orange pulsing */}
+                          {/* Take Quiz */}
                           {hasPendingQuiz && (
                             <button
                               onClick={() => setShowQuizModal(true)}
@@ -323,7 +295,7 @@ const [showQuizModal, setShowQuizModal] = useState(!!location.state?.pendingQuiz
                             </button>
                           )}
 
-                          {/* Join / Start — hidden if quiz pending */}
+                          {/* Start / Join */}
                           {!hasPendingQuiz && (effectiveStatus === "pending" || effectiveStatus === "active") && (
                             <button
                               onClick={() => navigate("/focus", {
@@ -341,10 +313,18 @@ const [showQuizModal, setShowQuizModal] = useState(!!location.state?.pendingQuiz
                             </button>
                           )}
 
-                          {/* Reschedule — only for truly missed (no quiz pending) */}
+                          {/* ── Reschedule → opens AI modal ── */}
                           {!hasPendingQuiz && effectiveStatus === "missed" && (
                             <button
-                              onClick={() => navigate("/schedule")}
+                              onClick={() => setRescheduleTarget({
+                                _id:         item._id,
+                                subjectName,
+                                topicName,
+                                startTime:   item.startTime,
+                                endTime:     item.endTime,
+                                date:        item.date,
+                                duration:    calcDurationMins(item.startTime, item.endTime),
+                              })}
                               className="px-5 py-1.5 bg-[#ba1a1a] text-white rounded-full text-xs font-bold active:scale-95 transition-transform"
                             >
                               Reschedule
@@ -358,7 +338,7 @@ const [showQuizModal, setShowQuizModal] = useState(!!location.state?.pendingQuiz
             )}
           </section>
 
-          {/* ── Quick Actions ─────────────────────────────────────────────── */}
+          {/* ── Quick Actions ───────────────────────────────────────────────── */}
           <section>
             <h2 className="font-bold text-lg text-[#1a1c18] mb-3">Quick Actions</h2>
             <div className="grid grid-cols-2 gap-3">
@@ -375,7 +355,7 @@ const [showQuizModal, setShowQuizModal] = useState(!!location.state?.pendingQuiz
             </div>
           </section>
 
-          {/* ── Upcoming Exams ────────────────────────────────────────────── */}
+          {/* ── Upcoming Exams ──────────────────────────────────────────────── */}
           {upcomingExams.length > 0 && (
             <section>
               <h2 className="font-bold text-lg text-[#1a1c18] mb-3">Upcoming Exams</h2>
@@ -414,7 +394,7 @@ const [showQuizModal, setShowQuizModal] = useState(!!location.state?.pendingQuiz
             </section>
           )}
 
-          {/* ── Needs Attention ───────────────────────────────────────────── */}
+          {/* ── Needs Attention ─────────────────────────────────────────────── */}
           <section>
             <h2 className="font-bold text-lg text-[#1a1c18] mb-3 flex items-center gap-2">
               Needs Attention
@@ -454,7 +434,7 @@ const [showQuizModal, setShowQuizModal] = useState(!!location.state?.pendingQuiz
 
         </div>
 
-        {/* ── Bottom Nav ────────────────────────────────────────────────────── */}
+        {/* ── Bottom Nav ──────────────────────────────────────────────────────── */}
         <nav className="fixed bottom-4 left-1/2 -translate-x-1/2 w-[92%] max-w-[440px] h-[68px] rounded-full z-50 bg-[#2f312d] shadow-xl flex justify-around items-center px-3">
           {[
             { icon: "home",           label: "Home",     route: "/dashboard" },
@@ -477,7 +457,7 @@ const [showQuizModal, setShowQuizModal] = useState(!!location.state?.pendingQuiz
           })}
         </nav>
 
-        {/* ── PostSessionQuiz Modal ─────────────────────────────────────────── */}
+        {/* ── PostSessionQuiz Modal ────────────────────────────────────────────── */}
         {showQuizModal && pendingQuiz && (
           <PostSessionQuiz
             subject={pendingQuiz.subject}
@@ -485,10 +465,22 @@ const [showQuizModal, setShowQuizModal] = useState(!!location.state?.pendingQuiz
             sessionId={pendingQuiz.sessionId}
             onComplete={(passed) => {
               setShowQuizModal(false);
-              if (passed) setPendingQuiz(null); // clear only on pass
+              if (passed) setPendingQuiz(null);
               fetchDashboard();
             }}
-            onDismiss={() => setShowQuizModal(false)} // just close modal, keep pendingQuiz
+            onDismiss={() => setShowQuizModal(false)}
+          />
+        )}
+
+        {/* ── AI Reschedule Modal ──────────────────────────────────────────────── */}
+        {rescheduleTarget && (
+          <RescheduleModal
+            session={rescheduleTarget}
+            onClose={() => setRescheduleTarget(null)}
+            onRescheduled={() => {
+              setRescheduleTarget(null);
+              fetchDashboard();
+            }}
           />
         )}
 

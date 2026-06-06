@@ -1,498 +1,485 @@
-﻿import React, { useState, useEffect, useRef, useCallback } from "react";
+﻿import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { quizAPI, subjectsAPI } from "../services/api";
+import { subjectsAPI, topicsAPI, profileAPI } from "../services/api";
+import { useAuth } from "../context/AuthContext";
 
 const Icon = ({ name, filled = false, className = "" }) => (
   <span
-    className={`material-symbols-outlined ${className}`}
-    style={{ fontVariationSettings: filled ? "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24" : "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24" }}
+    className={`material-symbols-outlined select-none ${className}`}
+    style={{
+      fontVariationSettings: filled
+        ? "'FILL' 1,'wght' 500,'GRAD' 0,'opsz' 24"
+        : "'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24",
+    }}
   >
     {name}
   </span>
 );
 
-const LABELS       = ["A", "B", "C", "D"];
-const DIFF_COLORS  = { Easy: "text-[#006769] bg-[#9ef1f2]", Medium: "text-[#6d3900] bg-[#ffdcc2]", Hard: "text-[#93000a] bg-[#ffdad6]" };
+const XP_MAP    = { easy: 10, medium: 15, hard: 20 };
+const COUNT_MAP = { easy: 5, medium: 7, hard: 10 };
+const DIFF_LABELS = {
+  easy:   { label: "Easy",   color: "bg-green-100 text-green-700",  ring: "#22c55e" },
+  medium: { label: "Medium", color: "bg-yellow-100 text-yellow-700", ring: "#eab308" },
+  hard:   { label: "Hard",   color: "bg-red-100 text-red-700",      ring: "#ef4444" },
+};
 
-// ── Normalise question from API ───────────────────────────────────────────────
-function normalizeQuestion(q, idx) {
-  const opts = Array.isArray(q.options) ? q.options : [];
-  return {
-    _id:           q._id ?? String(idx),
-    question:      q.question ?? q.text ?? "Question",
-    options:       opts.map((text, i) => ({ label: LABELS[i] ?? String(i + 1), text: String(text), index: i })),
-    correctIndex:  q.correctAnswer ?? q.correctIndex ?? null, // may be null if backend doesn't expose it
-    explanation:   q.explanation ?? null,
-    difficulty:    q.difficulty ?? "Medium",
-  };
-}
-
-// ── Elapsed time formatter ────────────────────────────────────────────────────
-function fmtElapsed(secs) {
-  return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
-}
-
-// ── XP calculation (matches backend gamification rules) ──────────────────────
-function calcXP(scorePercent) {
-  return scorePercent >= 80 ? 30 : 10;
-}
-
-// ── Bottom nav shared component ───────────────────────────────────────────────
-function BottomNav({ navigate }) {
+const ScoreRing = ({ score, total, color }) => {
+  const r    = 54;
+  const circ = 2 * Math.PI * r;
+  const dash = total > 0 ? (score / total) * circ : 0;
   return (
-    <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-[432px] h-[72px] z-50 flex justify-around items-center px-4 bg-[#2f312d] rounded-full shadow-xl">
-      {[
-        { icon: "home",           label: "Home",     route: "/dashboard" },
-        { icon: "calendar_month", label: "Schedule", route: "/schedule"  },
-        { icon: "timer",          label: "Focus",    route: "/focus"     },
-        { icon: "quiz",           label: "Quiz",     route: "/quiz"      },
-        { icon: "person",         label: "Profile",  route: "/profile"   },
-      ].map((item) => {
-        const isActive = item.route === "/quiz";
-        return (
-          <button
-            key={item.route}
-            onClick={() => navigate(item.route)}
-            className={`flex flex-col items-center justify-center rounded-full p-2 transition-all active:scale-90 ${isActive ? "bg-[#6a69cc] px-4 py-3" : ""}`}
-          >
-            <Icon name={item.icon} filled={isActive} className={isActive ? "text-white" : "text-[#f0f1ea]"} />
-            <span className={`text-[10px] font-semibold ${isActive ? "text-white" : "text-[#f0f1ea]"}`}>{item.label}</span>
+    <svg width="140" height="140" viewBox="0 0 140 140">
+      <circle cx="70" cy="70" r={r} fill="none" stroke="#e5e7eb" strokeWidth="12" />
+      <circle cx="70" cy="70" r={r} fill="none" stroke={color} strokeWidth="12"
+        strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
+        transform="rotate(-90 70 70)"
+        style={{ transition: "stroke-dasharray 0.8s ease" }}
+      />
+      <text x="70" y="65" textAnchor="middle" fontSize="26" fontWeight="700" fill="#1c1b1f">{score}/{total}</text>
+      <text x="70" y="85" textAnchor="middle" fontSize="13" fill="#6b7280">correct</text>
+    </svg>
+  );
+};
+
+const BottomNav = ({ navigate }) => {
+  const items = [
+    { icon: "home",           label: "Home",     path: "/dashboard" },
+    { icon: "calendar_month", label: "Schedule", path: "/schedule"  },
+    { icon: "timer",          label: "Focus",    path: "/focus"     },
+    { icon: "quiz",           label: "Quiz",     path: "/quiz", active: true },
+    { icon: "person",         label: "Profile",  path: "/profile"   },
+  ];
+  return (
+    <nav className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50">
+      <div className="flex items-center gap-1 px-3 py-2 rounded-full bg-[#2f312d] shadow-xl">
+        {items.map((item) => (
+          <button key={item.path} onClick={() => navigate(item.path)}
+            className={`flex flex-col items-center px-3 py-1.5 rounded-full transition-all ${item.active ? "bg-[#6a69cc]" : ""}`}>
+            <Icon name={item.icon} filled={item.active}
+              className={`text-[22px] ${item.active ? "text-white" : "text-[#c8c9be]"}`} />
+            <span className={`text-[10px] mt-0.5 font-medium ${item.active ? "text-white" : "text-[#c8c9be]"}`}>
+              {item.label}
+            </span>
           </button>
-        );
-      })}
+        ))}
+      </div>
     </nav>
   );
-}
+};
 
 export default function QuizPage() {
   const navigate = useNavigate();
+  const { refreshUser } = useAuth();
 
-  // ── Phase: "setup" | "loading" | "active" | "results" ────────────────────
-  const [phase, setPhase] = useState("setup");
-
-  // ── Setup state ───────────────────────────────────────────────────────────
+  const [view,            setView]            = useState("idle");
   const [subjects,        setSubjects]        = useState([]);
+  const [topics,          setTopics]          = useState([]);
   const [selectedSubject, setSelectedSubject] = useState(null);
-  const [difficulty,      setDifficulty]      = useState("Medium");
-  const [questionCount,   setQuestionCount]   = useState(10);
-  const [setupError,      setSetupError]      = useState("");
+  const [selectedTopic,   setSelectedTopic]   = useState(null);
+  const [difficulty,      setDifficulty]      = useState("medium");
+  const [loadingSubjects, setLoadingSubjects] = useState(false);
+  const [loadingTopics,   setLoadingTopics]   = useState(false);
+  const [questions,       setQuestions]       = useState([]);
+  const [currentQ,        setCurrentQ]        = useState(0);
+  const [selected,        setSelected]        = useState(null);
+  const [confirmed,       setConfirmed]       = useState(false);
+  const [answers,         setAnswers]         = useState([]);
+  const [genError,        setGenError]        = useState("");
+  const [xpEarned,        setXpEarned]        = useState(0);
+  const xpSaved = useRef(false);
 
-  // ── Active quiz state ─────────────────────────────────────────────────────
-  const [questions,     setQuestions]     = useState([]);
-  const [currentIdx,    setCurrentIdx]    = useState(0);
-  const [userAnswers,   setUserAnswers]   = useState([]);   // array of selected option index (or null for skipped)
-  const [selectedOpt,   setSelectedOpt]  = useState(null); // current question's selection
-  const [elapsed,       setElapsed]      = useState(0);
-  const timerRef = useRef(null);
-
-  // ── Results state ─────────────────────────────────────────────────────────
-  const [score,    setScore]   = useState(0);
-  const [xpEarned, setXpEarned] = useState(0);
-
-  // ── Load subjects on mount ────────────────────────────────────────────────
   useEffect(() => {
+    if (view !== "configure") return;
+    setLoadingSubjects(true);
     subjectsAPI.getAll()
-      .then((res) => {
-        const data = Array.isArray(res.data) ? res.data : res.data?.subjects ?? [];
-        setSubjects(data);
-      })
-      .catch(() => {});
-    return () => clearInterval(timerRef.current);
-  }, []);
+      .then((res) => setSubjects(res.data?.subjects || []))
+      .catch(() => setSubjects([]))
+      .finally(() => setLoadingSubjects(false));
+  }, [view]);
 
-  // ── Start quiz ────────────────────────────────────────────────────────────
-  const startQuiz = async () => {
-    if (!selectedSubject) { setSetupError("Please select a subject first."); return; }
-    setSetupError("");
-    setPhase("loading");
+  useEffect(() => {
+    if (!selectedSubject) { setTopics([]); setSelectedTopic(null); return; }
+    setLoadingTopics(true);
+    setSelectedTopic(null);
+    topicsAPI.getBySubject(selectedSubject._id)
+      .then((res) => setTopics(res.data?.topics || []))
+      .catch(() => setTopics([]))
+      .finally(() => setLoadingTopics(false));
+  }, [selectedSubject]);
+
+  const handleGenerate = async () => {
+    if (!selectedSubject || !selectedTopic) return;
+    setGenError("");
+    setView("generating");
+    xpSaved.current = false;
     try {
-      const res  = await quizAPI.getQuestions({
-        subject:    selectedSubject._id,
-        difficulty,
-        count:      questionCount,
+      const res = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/ai/quiz`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("sp_token")}`,
+        },
+        body: JSON.stringify({
+          subjectName: selectedSubject.name,
+          topicName:   selectedTopic.name,
+          difficulty,
+          count:       COUNT_MAP[difficulty],
+        }),
       });
-      const raw  = Array.isArray(res.data) ? res.data : res.data?.questions ?? [];
-      if (raw.length === 0) {
-        setSetupError("No questions found for this selection. Try a different subject or difficulty.");
-        setPhase("setup");
-        return;
-      }
-      const normalized = raw.slice(0, questionCount).map(normalizeQuestion);
-      setQuestions(normalized);
-      setCurrentIdx(0);
-      setUserAnswers([]);
-      setSelectedOpt(null);
-      setElapsed(0);
-      setPhase("active");
-      // Start timer
-      timerRef.current = setInterval(() => setElapsed((e) => e + 1), 1000);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message || "Generation failed");
+      setQuestions(data.questions);
+      setCurrentQ(0);
+      setSelected(null);
+      setConfirmed(false);
+      setAnswers([]);
+      setView("quiz");
     } catch (err) {
-      setSetupError(err.response?.data?.message || "Failed to load questions. Please try again.");
-      setPhase("setup");
+      setGenError(err.message || "Failed to generate quiz. Please try again.");
+      setView("configure");
     }
   };
 
-  // ── Finish quiz ────────────────────────────────────────────────────────────
-  const finishQuiz = useCallback(async (finalAnswers) => {
-    clearInterval(timerRef.current);
-    const q       = questions;
-    // Count correct (only if backend exposes correctIndex)
-    const correct = finalAnswers.filter((ans, i) => {
-      return ans !== null && q[i]?.correctIndex !== null && ans === q[i]?.correctIndex;
-    }).length;
-    const hasCorrectInfo = q.some((qi) => qi.correctIndex !== null);
-    const scoreVal  = hasCorrectInfo ? correct : finalAnswers.filter((a) => a !== null).length;
-    const total     = q.length;
-    const pct       = Math.round((scoreVal / total) * 100);
-    const xp        = calcXP(pct);
+  const handleOptionTap = (idx) => {
+    if (confirmed) return;
+    if (selected === idx) {
+      setConfirmed(true);
+      const correctIdx = ["A", "B", "C", "D"].indexOf(questions[currentQ].answer);
+      setAnswers((prev) => [...prev, { chosen: idx, correct: correctIdx }]);
+    } else {
+      setSelected(idx);
+    }
+  };
 
-    setScore(scoreVal);
-    setXpEarned(xp);
-    setPhase("results");
-
-    // Submit to backend (best-effort)
-    try {
-      await quizAPI.submit({
-        subject:        selectedSubject?._id,
-        difficulty,
-        totalQuestions: total,
-        correctAnswers: scoreVal,
-        scorePercent:   pct,
-        timeTaken:      elapsed,
-        answers:        finalAnswers.map((ans, i) => ({ questionId: q[i]._id, selectedIndex: ans })),
-      });
-    } catch { /* silent */ }
-  }, [questions, selectedSubject, difficulty, elapsed]);
-
-  // ── Navigate to next question or finish ───────────────────────────────────
   const handleNext = () => {
-    const updated = [...userAnswers, selectedOpt];
-    if (currentIdx + 1 >= questions.length) {
-      finishQuiz(updated);
+    if (currentQ < questions.length - 1) {
+      setCurrentQ((q) => q + 1);
+      setSelected(null);
+      setConfirmed(false);
     } else {
-      setUserAnswers(updated);
-      setCurrentIdx((i) => i + 1);
-      setSelectedOpt(null);
+      const correct = [...answers].filter((a) => a.chosen === a.correct).length;
+      const xp      = correct * XP_MAP[difficulty];
+      setXpEarned(xp);
+      setView("results");
+      if (!xpSaved.current && xp > 0) {
+        xpSaved.current = true;
+        profileAPI.update({ xpIncrement: xp }).then(() => refreshUser()).catch(() => {});
+      }
     }
   };
 
-  const handleSkip = () => {
-    const updated = [...userAnswers, null];
-    if (currentIdx + 1 >= questions.length) {
-      finishQuiz(updated);
-    } else {
-      setUserAnswers(updated);
-      setCurrentIdx((i) => i + 1);
-      setSelectedOpt(null);
+  const optionStyle = (idx) => {
+    const correctIdx = questions[currentQ] ? ["A","B","C","D"].indexOf(questions[currentQ].answer) : -1;
+    if (!confirmed) {
+      return selected === idx
+        ? "border-[#5150b1] bg-[#ededf8] text-[#5150b1] font-semibold"
+        : "border-gray-200 bg-white text-gray-700 hover:border-[#5150b1] hover:bg-[#ededf8]";
     }
+    if (idx === correctIdx)                        return "border-green-500 bg-green-50 text-green-700 font-semibold";
+    if (idx === selected && idx !== correctIdx)    return "border-red-400 bg-red-50 text-red-600";
+    return "border-gray-200 bg-white text-gray-400";
   };
 
-  // ── Reset to setup ─────────────────────────────────────────────────────────
-  const resetQuiz = () => {
-    clearInterval(timerRef.current);
-    setPhase("setup");
-    setQuestions([]);
-    setCurrentIdx(0);
-    setUserAnswers([]);
-    setSelectedOpt(null);
-    setElapsed(0);
+  const optionDotStyle = (idx) => {
+    const correctIdx = questions[currentQ] ? ["A","B","C","D"].indexOf(questions[currentQ].answer) : -1;
+    if (!confirmed) return selected === idx ? "bg-[#5150b1] text-white" : "bg-gray-100 text-gray-500";
+    if (idx === correctIdx)                     return "bg-green-500 text-white";
+    if (idx === selected && idx !== correctIdx) return "bg-red-400 text-white";
+    return "bg-gray-100 text-gray-400";
   };
 
-  // ── Current question derived values ──────────────────────────────────────
-  const currentQ  = questions[currentIdx];
-  const progress  = questions.length > 0 ? ((currentIdx) / questions.length) * 100 : 0;
-  const isLast    = currentIdx === questions.length - 1;
+  const correctCount = answers.filter((a) => a.chosen === a.correct).length;
+  const pct          = questions.length > 0 ? Math.round((correctCount / questions.length) * 100) : 0;
+  const passed       = pct >= 60;
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // RENDER
-  // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="bg-[#f9faf3] min-h-screen pb-32">
+    <div className="min-h-screen bg-[#f9faf3]" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+      <div className="max-w-[480px] mx-auto min-h-screen flex flex-col">
 
-      {/* Top App Bar */}
-      <header className="sticky top-0 w-full bg-[#f9faf3] z-50 flex items-center justify-between px-5 h-16 max-w-[480px] mx-auto">
-        <button
-          onClick={phase === "active" ? resetQuiz : () => navigate(-1)}
-          className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-[#e2e3dc] active:scale-95 transition-all"
-        >
-          <Icon name="arrow_back" className="text-[#1a1c18]" />
-        </button>
-        <h1 className="text-[24px] font-extrabold text-[#5150b1]">Quiz</h1>
-        {phase === "active" ? (
-          <div className="flex items-center gap-1 text-[#464552] text-sm font-bold">
-            <Icon name="schedule" className="text-[16px]" />
-            {fmtElapsed(elapsed)}
-          </div>
-        ) : (
-          <div className="w-10" />
-        )}
-      </header>
-
-      {/* ── SETUP PHASE ────────────────────────────────────────────────────── */}
-      {phase === "setup" && (
-        <main className="max-w-[480px] mx-auto px-5 pt-2 space-y-6">
-
-          <div>
-            <h2 className="text-[28px] font-extrabold text-[#1a1c18]">Start a Quiz 🧠</h2>
-            <p className="text-sm text-[#464552] mt-1">Pick a subject and we'll test your knowledge</p>
-          </div>
-
-          {/* Subject */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold uppercase tracking-wider text-[#464552]">Subject</label>
-            {subjects.length === 0 ? (
-              <p className="text-sm text-[#464552] bg-[#f3f4ed] rounded-2xl px-4 py-3">
-                No subjects yet — add them in the Subjects page first.
+        {/* ── IDLE ── */}
+        {view === "idle" && (
+          <div className="flex flex-col flex-1 px-4 pt-10 pb-28">
+            <div className="mb-8">
+              <h1 className="text-2xl font-bold text-[#1c1b1f]">Quiz</h1>
+              <p className="text-sm text-gray-500 mt-1">Test your knowledge with AI-generated questions</p>
+            </div>
+            <div className="bg-white rounded-[28px] shadow-sm p-6 mb-5 flex flex-col items-center text-center">
+              <div className="w-16 h-16 rounded-full bg-[#ededf8] flex items-center justify-center mb-4">
+                <Icon name="psychology" filled className="text-[#5150b1] text-[32px]" />
+              </div>
+              <h2 className="text-lg font-bold text-[#1c1b1f] mb-2">AI Quiz Generator</h2>
+              <p className="text-sm text-gray-500 leading-relaxed mb-6">
+                Pick a subject and topic, choose your difficulty, and get a custom quiz built just for you in seconds.
               </p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {subjects.map((s) => (
-                  <button
-                    key={s._id}
-                    onClick={() => { setSelectedSubject({ _id: s._id, name: s.name }); setSetupError(""); }}
-                    className={`px-4 py-2.5 rounded-full text-sm font-semibold border-2 transition-all active:scale-95 ${
-                      selectedSubject?._id === s._id
-                        ? "bg-[#5150b1] text-white border-transparent shadow-lg"
-                        : "bg-white text-[#464552] border-[#c7c5d4]/50"
-                    }`}
-                  >
-                    {s.name}
+              <button onClick={() => setView("configure")}
+                className="w-full py-3.5 rounded-[16px] bg-[#5150b1] text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-sm active:scale-95 transition-transform">
+                <Icon name="auto_awesome" filled className="text-white text-[18px]" />
+                Generate a Quiz
+              </button>
+            </div>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 px-1">Difficulty levels</p>
+            <div className="flex gap-3">
+              {Object.entries(DIFF_LABELS).map(([key, val]) => (
+                <div key={key} className="flex-1 bg-white rounded-[20px] shadow-sm p-4 flex flex-col items-center gap-1">
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${val.color}`}>{val.label}</span>
+                  <span className="text-xs text-gray-400">+{XP_MAP[key]} XP each</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── CONFIGURE ── */}
+        {view === "configure" && (
+          <div className="flex flex-col flex-1 px-4 pt-6 pb-28">
+            <div className="flex items-center gap-3 mb-6">
+              <button onClick={() => setView("idle")}
+                className="w-9 h-9 rounded-full bg-white shadow-sm flex items-center justify-center active:scale-95 transition-transform">
+                <Icon name="arrow_back" className="text-[#1c1b1f] text-[20px]" />
+              </button>
+              <div>
+                <h1 className="text-lg font-bold text-[#1c1b1f]">Configure Quiz</h1>
+                <p className="text-xs text-gray-500">Choose subject, topic & difficulty</p>
+              </div>
+            </div>
+
+            {genError && (
+              <div className="mb-4 px-4 py-3 rounded-[14px] bg-red-50 border border-red-200 text-red-600 text-sm flex items-center gap-2">
+                <Icon name="error" className="text-red-400 text-[18px]" />{genError}
+              </div>
+            )}
+
+            {/* Subject */}
+            <div className="bg-white rounded-[24px] shadow-sm p-5 mb-4">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Subject</p>
+              {loadingSubjects ? (
+                <div className="flex gap-2 flex-wrap">
+                  {[1,2,3].map((i) => <div key={i} className="h-8 w-24 rounded-full bg-gray-100 animate-pulse" />)}
+                </div>
+              ) : subjects.length === 0 ? (
+                <p className="text-sm text-gray-400">No subjects found. Add some first.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {subjects.map((s) => (
+                    <button key={s._id} onClick={() => setSelectedSubject(s)}
+                      className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-all active:scale-95 ${
+                        selectedSubject?._id === s._id
+                          ? "bg-[#5150b1] text-white border-[#5150b1]"
+                          : "bg-gray-50 text-gray-600 border-gray-200"
+                      }`}>
+                      {s.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Topic */}
+            <div className="bg-white rounded-[24px] shadow-sm p-5 mb-4">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Topic</p>
+              {!selectedSubject ? (
+                <p className="text-sm text-gray-400">Select a subject first</p>
+              ) : loadingTopics ? (
+                <div className="flex gap-2 flex-wrap">
+                  {[1,2,3].map((i) => <div key={i} className="h-8 w-28 rounded-full bg-gray-100 animate-pulse" />)}
+                </div>
+              ) : topics.length === 0 ? (
+                <p className="text-sm text-gray-400">No topics in this subject.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {topics.map((t) => (
+                    <button key={t._id} onClick={() => setSelectedTopic(t)}
+                      className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-all active:scale-95 ${
+                        selectedTopic?._id === t._id
+                          ? "bg-[#5150b1] text-white border-[#5150b1]"
+                          : "bg-gray-50 text-gray-600 border-gray-200"
+                      }`}>
+                      {t.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Difficulty */}
+            <div className="bg-white rounded-[24px] shadow-sm p-5 mb-6">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Difficulty</p>
+              <div className="flex gap-3">
+                {Object.entries(DIFF_LABELS).map(([key, val]) => (
+                  <button key={key} onClick={() => setDifficulty(key)}
+                    className={`flex-1 py-3 rounded-[16px] flex flex-col items-center gap-1 border-2 transition-all active:scale-95 ${
+                      difficulty === key ? "border-[#5150b1] bg-[#ededf8]" : "border-gray-200 bg-gray-50"
+                    }`}>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${val.color}`}>{val.label}</span>
+                    <span className="text-[11px] text-gray-400">+{XP_MAP[key]} XP</span>
                   </button>
                 ))}
               </div>
+            </div>
+
+            <button onClick={handleGenerate} disabled={!selectedSubject || !selectedTopic}
+              className={`w-full py-4 rounded-[18px] font-semibold text-sm flex items-center justify-center gap-2 transition-all active:scale-95 shadow-sm ${
+                selectedSubject && selectedTopic ? "bg-[#5150b1] text-white" : "bg-gray-200 text-gray-400 cursor-not-allowed"
+              }`}>
+              <Icon name="auto_awesome" filled className="text-[18px]" />
+              Generate Quiz
+            </button>
+          </div>
+        )}
+
+        {/* ── GENERATING ── */}
+        {view === "generating" && (
+          <div className="flex flex-col flex-1 items-center justify-center px-4 pb-28 gap-6">
+            <div className="w-20 h-20 rounded-full bg-[#ededf8] flex items-center justify-center">
+              <Icon name="psychology" filled className="text-[#5150b1] text-[40px] animate-pulse" />
+            </div>
+            <div className="text-center">
+              <h2 className="text-lg font-bold text-[#1c1b1f] mb-2">Generating your quiz…</h2>
+              <p className="text-sm text-gray-500">
+                Building {COUNT_MAP[difficulty]} {DIFF_LABELS[difficulty].label} questions on{" "}
+                <span className="font-semibold text-[#5150b1]">{selectedTopic?.name}</span>
+              </p>
+            </div>
+            <div className="flex gap-2">
+              {[0,1,2].map((i) => (
+                <div key={i} className="w-2.5 h-2.5 rounded-full bg-[#5150b1]"
+                  style={{ animation: `bounce 1.2s ease-in-out ${i * 0.2}s infinite` }} />
+              ))}
+            </div>
+            <style>{`@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-10px)}}`}</style>
+          </div>
+        )}
+
+        {/* ── QUIZ ── */}
+        {view === "quiz" && questions.length > 0 && (
+          <div className="flex flex-col flex-1 px-4 pt-6 pb-28">
+            <div className="mb-5">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs font-semibold text-gray-400">Question {currentQ + 1} of {questions.length}</span>
+                <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${DIFF_LABELS[difficulty].color}`}>
+                  {DIFF_LABELS[difficulty].label}
+                </span>
+              </div>
+              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div className="h-full bg-[#5150b1] rounded-full transition-all duration-500"
+                  style={{ width: `${((currentQ + 1) / questions.length) * 100}%` }} />
+              </div>
+            </div>
+
+            <div className="bg-white rounded-[24px] shadow-sm p-5 mb-4">
+              <p className="text-base font-semibold text-[#1c1b1f] leading-relaxed">
+                {questions[currentQ].question}
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3 mb-4">
+              {questions[currentQ].options.map((opt, idx) => {
+                const letter     = ["A","B","C","D"][idx];
+                const correctIdx = ["A","B","C","D"].indexOf(questions[currentQ].answer);
+                return (
+                  <button key={idx} onClick={() => handleOptionTap(idx)}
+                    className={`w-full flex items-center gap-3 p-4 rounded-[18px] border-2 text-left transition-all active:scale-[0.98] ${optionStyle(idx)}`}>
+                    <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${optionDotStyle(idx)}`}>
+                      {letter}
+                    </span>
+                    <span className="text-sm leading-snug">{opt.replace(/^[A-D]\.\s*/, "")}</span>
+                    {confirmed && idx === correctIdx && (
+                      <Icon name="check_circle" filled className="text-green-500 text-[20px] ml-auto flex-shrink-0" />
+                    )}
+                    {confirmed && idx === selected && idx !== correctIdx && (
+                      <Icon name="cancel" filled className="text-red-400 text-[20px] ml-auto flex-shrink-0" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {selected !== null && !confirmed && (
+              <p className="text-xs text-center text-[#5150b1] font-medium mb-3 animate-pulse">
+                Tap again to confirm your answer
+              </p>
+            )}
+
+            {confirmed && (
+              <div className="flex flex-col gap-3">
+                <div className="bg-[#f0f0fb] rounded-[16px] p-4">
+                  <p className="text-xs font-semibold text-[#5150b1] mb-1 flex items-center gap-1">
+                    <Icon name="lightbulb" filled className="text-[16px]" /> Explanation
+                  </p>
+                  <p className="text-sm text-gray-600 leading-relaxed">{questions[currentQ].explanation}</p>
+                </div>
+                <button onClick={handleNext}
+                  className="w-full py-4 rounded-[18px] bg-[#5150b1] text-white font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition-transform">
+                  {currentQ < questions.length - 1
+                    ? <><span>Next Question</span><Icon name="arrow_forward" className="text-white text-[18px]" /></>
+                    : <><span>See Results</span><Icon name="emoji_events" filled className="text-white text-[18px]" /></>
+                  }
+                </button>
+              </div>
             )}
           </div>
+        )}
 
-          {/* Difficulty */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold uppercase tracking-wider text-[#464552]">Difficulty</label>
-            <div className="flex gap-2">
-              {["Easy", "Medium", "Hard"].map((d) => (
-                <button
-                  key={d}
-                  onClick={() => setDifficulty(d)}
-                  className={`flex-1 py-3 rounded-full text-sm font-bold border-2 transition-all active:scale-95 ${
-                    difficulty === d ? "bg-[#5150b1] text-white border-transparent" : "bg-white text-[#464552] border-[#c7c5d4]/50"
-                  }`}
-                >
-                  {d}
-                </button>
-              ))}
+        {/* ── RESULTS ── */}
+        {view === "results" && (
+          <div className="flex flex-col flex-1 px-4 pt-10 pb-28 items-center">
+            <div className="w-16 h-16 rounded-full bg-[#ededf8] flex items-center justify-center mb-4">
+              <Icon name={passed ? "emoji_events" : "sentiment_dissatisfied"} filled
+                className={`text-[32px] ${passed ? "text-[#5150b1]" : "text-gray-400"}`} />
             </div>
-          </div>
+            <h2 className="text-xl font-bold text-[#1c1b1f] mb-1">{passed ? "Great work! 🎉" : "Keep practising!"}</h2>
+            <p className="text-sm text-gray-500 mb-6 text-center">{selectedTopic?.name} · {DIFF_LABELS[difficulty].label}</p>
 
-          {/* Question Count */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold uppercase tracking-wider text-[#464552]">Questions</label>
-            <div className="flex gap-2">
-              {[5, 10, 15, 20].map((n) => (
-                <button
-                  key={n}
-                  onClick={() => setQuestionCount(n)}
-                  className={`flex-1 py-3 rounded-full text-sm font-bold border-2 transition-all active:scale-95 ${
-                    questionCount === n ? "bg-[#5150b1] text-white border-transparent" : "bg-white text-[#464552] border-[#c7c5d4]/50"
-                  }`}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
-          </div>
+            <ScoreRing score={correctCount} total={questions.length} color={passed ? "#5150b1" : "#ef4444"} />
 
-          {/* Error */}
-          {setupError && (
-            <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 flex items-center gap-2">
-              <Icon name="error" filled className="text-red-500 text-[18px] flex-shrink-0" />
-              <p className="text-[13px] text-red-600 font-medium">{setupError}</p>
-            </div>
-          )}
-
-          {/* Summary card */}
-          {selectedSubject && (
-            <div className="bg-[#e2dfff]/40 rounded-[24px] p-4 border border-[#5150b1]/10 flex items-center justify-between">
-              <div>
-                <p className="font-bold text-sm text-[#1a1c18]">{selectedSubject.name}</p>
-                <p className="text-xs text-[#464552] mt-0.5">{questionCount} questions · {difficulty}</p>
-              </div>
-              <Icon name="quiz" filled className="text-[#5150b1] text-[28px]" />
-            </div>
-          )}
-
-          {/* Start button */}
-          <button
-            onClick={startQuiz}
-            disabled={!selectedSubject}
-            className="w-full h-14 bg-[#5150b1] text-white text-[18px] font-bold rounded-full shadow-lg active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Start Quiz
-          </button>
-        </main>
-      )}
-
-      {/* ── LOADING PHASE ──────────────────────────────────────────────────── */}
-      {phase === "loading" && (
-        <main className="max-w-[480px] mx-auto px-5 flex flex-col items-center justify-center min-h-[60vh] gap-4">
-          <div className="w-16 h-16 border-4 border-[#5150b1] border-t-transparent rounded-full animate-spin" />
-          <p className="font-bold text-[#1a1c18]">Generating your quiz…</p>
-          <p className="text-sm text-[#464552]">{selectedSubject?.name} · {difficulty}</p>
-        </main>
-      )}
-
-      {/* ── ACTIVE PHASE ───────────────────────────────────────────────────── */}
-      {phase === "active" && currentQ && (
-        <main className="max-w-[480px] mx-auto px-5 pt-2 space-y-4">
-
-          {/* Quiz meta */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <div className="inline-flex items-center px-4 py-1.5 rounded-full bg-[#e2dfff] text-[#0b006b] text-[14px] font-semibold">
-                {selectedSubject?.name}
-              </div>
-              <span className={`px-3 py-1 rounded-full text-[12px] font-bold ${DIFF_COLORS[difficulty]}`}>{difficulty}</span>
-            </div>
-            <div className="flex items-center gap-3 text-[#464552] text-[13px] font-semibold">
-              <span className="flex items-center gap-1"><Icon name="list_alt" className="text-[18px]" />{questions.length} Questions</span>
-              <span className="flex items-center gap-1"><Icon name="schedule" className="text-[18px]" />{fmtElapsed(elapsed)}</span>
-            </div>
-          </div>
-
-          {/* Progress bar */}
-          <div className="space-y-1.5">
-            <div className="w-full h-2.5 bg-[#edeee8] rounded-full overflow-hidden">
-              <div className="h-full bg-[#5150b1] rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
-            </div>
-            <p className="text-[14px] font-semibold text-[#464552]">Question {currentIdx + 1} of {questions.length}</p>
-          </div>
-
-          {/* Question card */}
-          <div className="bg-white rounded-[24px] p-6 shadow-[0px_10px_30px_rgba(0,0,0,0.06)] border border-[#e2e3dc]/30">
-            <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-[#e2dfff] text-[#0b006b] text-[16px] font-bold mb-4">
-              Q{currentIdx + 1}
-            </div>
-            <h2 className="text-[20px] font-bold text-[#1a1c18] leading-[28px]">{currentQ.question}</h2>
-          </div>
-
-          {/* Options */}
-          <div className="space-y-3">
-            {currentQ.options.map((opt) => {
-              const isSelected = selectedOpt === opt.index;
-              return (
-                <button
-                  key={opt.label}
-                  onClick={() => { setSelectedOpt(opt.index); if (window.navigator.vibrate) window.navigator.vibrate(10); }}
-                  className="w-full flex items-center p-4 rounded-[20px] border text-left transition-all duration-200"
-                  style={{
-                    backgroundColor: isSelected ? "#5150b1" : "#ffffff",
-                    borderColor:     isSelected ? "transparent" : "#e2e3dc66",
-                    transform:       isSelected ? "scale(1.02)" : "scale(1)",
-                    boxShadow:       isSelected ? "0px 10px 20px rgba(81,80,177,0.25)" : "0px 4px 12px rgba(0,0,0,0.04)",
-                  }}
-                >
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center font-bold mr-4 shrink-0 text-[15px]"
-                    style={{ backgroundColor: isSelected ? "rgba(255,255,255,0.2)" : "#e8e9e2", color: isSelected ? "#ffffff" : "#464552" }}
-                  >
-                    {opt.label}
+            <div className="flex gap-4 mt-6 w-full">
+              {[
+                { label: "Score",    value: `${pct}%`,                    icon: "percent",       bg: "bg-[#ededf8]",  tc: "text-[#5150b1]"   },
+                { label: "XP Earned", value: `+${xpEarned}`,             icon: "bolt",          bg: "bg-yellow-50",  tc: "text-yellow-600"  },
+                { label: "Correct",  value: `${correctCount}/${questions.length}`, icon: "check_circle", bg: "bg-green-50", tc: "text-green-600" },
+              ].map((s) => (
+                <div key={s.label} className="flex-1 bg-white rounded-[20px] shadow-sm p-4 flex flex-col items-center gap-1">
+                  <div className={`w-8 h-8 rounded-full ${s.bg} flex items-center justify-center mb-1`}>
+                    <Icon name={s.icon} filled className={`${s.tc} text-[18px]`} />
                   </div>
-                  <span className="text-[16px] font-medium" style={{ color: isSelected ? "#ffffff" : "#1a1c18" }}>
-                    {opt.text}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+                  <span className={`text-base font-bold ${s.tc}`}>{s.value}</span>
+                  <span className="text-[11px] text-gray-400">{s.label}</span>
+                </div>
+              ))}
+            </div>
 
-          {/* Actions */}
-          <div className="pt-2 flex flex-col items-center gap-4 pb-4">
-            <button
-              onClick={handleNext}
-              disabled={selectedOpt === null}
-              className="w-full h-14 bg-[#5150b1] text-white text-[18px] font-bold rounded-full shadow-lg active:scale-[0.98] transition-all disabled:opacity-40"
-            >
-              {isLast ? "Finish Quiz" : "Next Question"}
-            </button>
-            <button onClick={handleSkip} className="text-[14px] font-semibold text-[#464552] hover:text-[#5150b1] transition-colors">
-              Skip this question
-            </button>
-          </div>
-        </main>
-      )}
-
-      {/* ── RESULTS PHASE ──────────────────────────────────────────────────── */}
-      {phase === "results" && (
-        <main className="max-w-[480px] mx-auto px-5 pt-4 space-y-5">
-
-          {/* Score ring */}
-          <div className="flex flex-col items-center py-6">
-            <div className="relative w-48 h-48 flex items-center justify-center">
-              <svg className="absolute w-full h-full -rotate-90" viewBox="0 0 192 192">
-                <circle cx="96" cy="96" r="80" fill="transparent" stroke="#e2e3dc" strokeWidth="12" />
-                <circle
-                  cx="96" cy="96" r="80" fill="transparent"
-                  stroke={score / questions.length >= 0.8 ? "#006769" : "#5150b1"}
-                  strokeWidth="12"
-                  strokeDasharray={502}
-                  strokeDashoffset={502 * (1 - score / Math.max(questions.length, 1))}
-                  strokeLinecap="round"
-                  style={{ transition: "stroke-dashoffset 1s ease" }}
-                />
-              </svg>
-              <div className="text-center z-10">
-                <span className="text-[44px] font-extrabold text-[#1a1c18] leading-none">
-                  {Math.round((score / Math.max(questions.length, 1)) * 100)}%
-                </span>
-                <p className="text-sm font-semibold text-[#464552] mt-1">{score}/{questions.length} correct</p>
+            <div className="w-full mt-5 bg-white rounded-[24px] shadow-sm p-5">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Question breakdown</p>
+              <div className="flex flex-wrap gap-2">
+                {questions.map((q, i) => {
+                  const a         = answers[i];
+                  const isCorrect = a && a.chosen === a.correct;
+                  return (
+                    <div key={i} className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+                      isCorrect ? "bg-green-100 text-green-600" : "bg-red-100 text-red-500"
+                    }`}>
+                      {i + 1}
+                    </div>
+                  );
+                })}
               </div>
             </div>
-            <h2 className="text-[24px] font-extrabold text-[#1a1c18] mt-2">
-              {score / questions.length >= 0.8 ? "Excellent! 🎉" : score / questions.length >= 0.5 ? "Good effort! 💪" : "Keep practising! 📚"}
-            </h2>
-          </div>
 
-          {/* Stats strip */}
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { icon: "bolt", color: "text-[#5150b1]", bg: "bg-[#e2dfff]/50", label: "XP Earned", value: `+${xpEarned}` },
-              { icon: "schedule", color: "text-[#8d4f0e]", bg: "bg-[#ffdcc2]/50", label: "Time Taken", value: fmtElapsed(elapsed) },
-              { icon: "signal_cellular_alt", color: "text-[#006769]", bg: "bg-[#9ef1f2]/30", label: "Difficulty", value: difficulty },
-            ].map(({ icon, color, bg, label, value }) => (
-              <div key={label} className={`${bg} rounded-[20px] p-4 text-center`}>
-                <Icon name={icon} filled className={`${color} text-[22px]`} />
-                <p className="text-[10px] font-semibold text-[#464552] mt-1">{label}</p>
-                <p className="font-extrabold text-sm text-[#1a1c18]">{value}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Subject badge */}
-          <div className="bg-white rounded-[24px] p-4 border border-[#c7c5d4]/20 shadow-sm flex items-center justify-between">
-            <div>
-              <p className="font-bold text-[#1a1c18]">{selectedSubject?.name}</p>
-              <p className="text-xs text-[#464552] mt-0.5">{questions.length} questions attempted</p>
-            </div>
-            <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl font-extrabold ${score / questions.length >= 0.8 ? "bg-[#9ef1f2] text-[#006769]" : "bg-[#e2dfff] text-[#5150b1]"}`}>
-              {Math.round((score / Math.max(questions.length, 1)) * 100)}%
+            <div className="flex gap-3 mt-5 w-full">
+              <button onClick={() => { setView("configure"); setSelectedTopic(null); setSelectedSubject(null); setDifficulty("medium"); setQuestions([]); setAnswers([]); }}
+                className="flex-1 py-3.5 rounded-[16px] border-2 border-[#5150b1] text-[#5150b1] font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition-transform">
+                <Icon name="refresh" className="text-[18px]" /> Try Again
+              </button>
+              <button onClick={() => setView("idle")}
+                className="flex-1 py-3.5 rounded-[16px] bg-[#5150b1] text-white font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition-transform">
+                <Icon name="home" className="text-[18px]" /> Done
+              </button>
             </div>
           </div>
+        )}
 
-          {/* Action buttons */}
-          <div className="flex flex-col gap-3 pb-4">
-            <button
-              onClick={resetQuiz}
-              className="w-full h-14 bg-[#5150b1] text-white text-[18px] font-bold rounded-full shadow-lg active:scale-[0.98] transition-all"
-            >
-              Try Again
-            </button>
-            <button
-              onClick={() => navigate("/dashboard")}
-              className="w-full h-14 bg-[#f3f4ed] text-[#1a1c18] text-[16px] font-bold rounded-full border border-[#c7c5d4]/30 active:scale-[0.98] transition-all"
-            >
-              Back to Dashboard
-            </button>
-          </div>
-        </main>
-      )}
-
+      </div>
       <BottomNav navigate={navigate} />
     </div>
   );

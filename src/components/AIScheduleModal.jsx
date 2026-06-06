@@ -108,26 +108,27 @@ export default function AIScheduleModal({ onClose, onScheduleCreated }) {
   };
 
   /* ── save ── */
-  const saveSchedule = async () => {
-    setStep(4);
-    try {
-      const toSave = generatedSessions
-        .filter((_, i) => !removedIndexes.has(i))
-        .map((s) => ({
-          subjectId: s.subjectId,
-          ...(s.topicId ? { topicId: s.topicId } : {}),
-          date:      s.date,
-          startTime: s.startTime,
-          endTime:   s.endTime,
-        }));
-      await scheduleAPI.bulkCreate(toSave);
-      onScheduleCreated?.();
-      onClose();
-    } catch {
-      setError("Failed to save sessions. Please try again.");
-      setStep(3);
-    }
-  };
+const saveSchedule = async () => {
+  setStep(4);
+  try {
+    const toSave = generatedSessions
+      .filter((_, i) => !removedIndexes.has(i))
+      .map((s) => ({
+        subjectId: s.subjectId,
+        ...(s.topicId ? { topicId: s.topicId } : {}),
+        date:      s.date,
+        startTime: s.startTime,
+        endTime:   s.endTime,
+      }));
+    await scheduleAPI.bulkCreate(toSave);
+    onScheduleCreated?.();
+    onClose();
+  } catch (err) {
+    console.error("Save error:", err.response?.data || err.message);
+    setError(err.response?.data?.message || "Failed to save. Check console for details.");
+    setStep(3);
+  }
+};
 
   /* ── step labels ── */
   const stepLabel = {
