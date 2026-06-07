@@ -208,7 +208,7 @@ export default function Dashboard() {
           <section>
             <div className="flex justify-between items-center mb-3">
               <h2 className="font-bold text-lg text-[#1a1c18]">Today's Plan</h2>
-              <button onClick={() => navigate("/subjects")} className="text-[#5150b1] text-sm font-semibold">See All</button>
+              <button onClick={() => navigate("/subjects")} className="text-[#5150b1] text-sm font-semibold">Subjects</button>
             </div>
 
             {loading ? (
