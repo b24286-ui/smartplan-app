@@ -285,26 +285,23 @@ useEffect(() => {
   return (
     <div className="bg-[#f9faf3] text-[#1a1c18] min-h-screen flex flex-col items-center pb-32 overflow-x-hidden">
 
-      {/* Top App Bar */}
-      <header className="flex items-center justify-between px-5 py-6 w-full max-w-[480px]">
-        <div className="flex items-center gap-3">
-          {sessionMode && (
-            <button
-              onClick={() => navigate("/dashboard")}
-              className="w-10 h-10 flex items-center justify-center rounded-full bg-[#e8e9e2] active:scale-95 transition-transform"
-            >
-              <Icon name="arrow_back" className="text-[#464552]" />
-            </button>
-          )}
-          <h1 className="text-[32px] font-extrabold text-[#1a1c18] tracking-tight">
-            {sessionMode ? (routeState.subject || "Session") : "Focus"}
-          </h1>
-        </div>
-        <button className="w-12 h-12 flex items-center justify-center rounded-full bg-[#e8e9e2] active:scale-95 transition-transform">
-          <Icon name="settings" className="text-[#464552]" />
-        </button>
-      </header>
+     {/* Top App Bar */}
+<header className="flex items-center px-5 py-6 w-full max-w-[480px]">
+  <div className="flex items-center gap-3">
+    {sessionMode && (
+      <button
+        onClick={() => navigate("/dashboard")}
+        className="w-10 h-10 flex items-center justify-center rounded-full bg-[#e8e9e2] active:scale-95 transition-transform"
+      >
+        <Icon name="arrow_back" className="text-[#464552]" />
+      </button>
+    )}
 
+    <h1 className="text-[32px] font-extrabold text-[#1a1c18] tracking-tight">
+      {sessionMode ? (routeState.subject || "Session") : "Focus"}
+    </h1>
+  </div>
+</header>
       <main className="w-full max-w-[480px] px-5 space-y-4">
 
         {/* Subject Selector Pill */}
