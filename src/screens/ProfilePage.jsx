@@ -137,13 +137,42 @@ export default function ProfilePage() {
   const level          = user?.level ?? 1;
   const xp             = user?.xp    ?? 0;
 
-  const SETTINGS = [
-    { icon: "notifications", label: "Notifications", error: false, action: null },
-    { icon: "palette",       label: "Appearance",    error: false, action: null },
-    { icon: "lock",          label: "Privacy",       error: false, action: null },
-    { icon: "help",          label: "Help & Support",error: false, action: null },
-    { icon: "logout",        label: "Log Out",       error: true,  action: handleLogout },
-  ];
+const handleComingSoon = (feature) => {
+  alert(`${feature} is coming soon!`);
+};
+
+const SETTINGS = [
+  {
+    icon: "notifications",
+    label: "Notifications",
+    error: false,
+    action: () => handleComingSoon("Notifications"),
+  },
+  {
+    icon: "palette",
+    label: "Appearance",
+    error: false,
+    action: () => handleComingSoon("Appearance"),
+  },
+  {
+    icon: "lock",
+    label: "Privacy",
+    error: false,
+    action: () => handleComingSoon("Privacy"),
+  },
+  {
+    icon: "help",
+    label: "Help & Support",
+    error: false,
+    action: () => handleComingSoon("Help & Support"),
+  },
+  {
+    icon: "logout",
+    label: "Log Out",
+    error: true,
+    action: handleLogout,
+  },
+];
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
