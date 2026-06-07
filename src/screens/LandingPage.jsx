@@ -245,7 +245,7 @@ export default function LandingPage() {
               <a key={link} href="#" className="text-[#464552] hover:text-[#5150b1] transition-colors text-[14px] font-semibold">{link}</a>
             ))}
           </div>
-          <p className="text-[14px] text-[#464552] opacity-60">© 2024 SmartPlan. Master your study flow.</p>
+          <p className="text-[14px] text-[#464552] opacity-60">© 2026 SmartPlan. Master your study flow.</p>
         </footer>
       </main>
 
