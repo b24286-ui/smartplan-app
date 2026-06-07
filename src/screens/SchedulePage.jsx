@@ -1,4 +1,4 @@
-﻿import AIScheduleModal from "../components/AIScheduleModal";
+import AIScheduleModal from "../components/AIScheduleModal";
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { scheduleAPI, subjectsAPI } from "../services/api";
@@ -257,6 +257,8 @@ export default function SchedulePage() {
     ? `${(totalMins / 60).toFixed(1).replace(".0", "")} hrs planned · ${sessions.length} session${sessions.length !== 1 ? "s" : ""}`
     : "";
 
+  const noSubjects = subjects.length === 0;
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="bg-[#f9faf3] text-[#1a1c18] min-h-screen pb-28">
@@ -361,6 +363,7 @@ export default function SchedulePage() {
           </div>
         )}
       </main>
+
       {/* Bottom Nav */}
       <nav className="fixed bottom-4 left-1/2 -translate-x-1/2 w-[92%] max-w-[440px] h-[68px] rounded-full z-50 bg-[#2f312d] shadow-xl flex justify-around items-center px-3">
         {[
@@ -405,7 +408,13 @@ export default function SchedulePage() {
           {/* Subject */}
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-[#464552] px-1">Subject</label>
-            {subjects.length > 0 ? (
+            {noSubjects ? (
+              /* ── No subjects error state ── */
+              <div className="w-full h-12 bg-[#ffdad6] rounded-2xl px-4 flex items-center gap-2 ring-1 ring-[#ba1a1a]/30">
+                <Icon name="error" filled className="text-[#ba1a1a] text-[18px]" />
+                <span className="text-sm font-semibold text-[#ba1a1a]">Please add a subject first</span>
+              </div>
+            ) : (
               <select
                 value={newSubject}
                 onChange={(e) => setNewSubject(e.target.value)}
@@ -416,58 +425,67 @@ export default function SchedulePage() {
                   <option key={s._id} value={s._id}>{s.name}</option>
                 ))}
               </select>
-            ) : (
-              <input
-                type="text" value={newSubject} onChange={(e) => setNewSubject(e.target.value)}
-                placeholder="e.g. Mathematics"
-                className="w-full h-12 bg-[#f3f4ed] rounded-2xl px-4 text-sm font-medium text-[#1a1c18] ring-1 ring-[#c7c5d4] focus:ring-2 focus:ring-[#5150b1] outline-none transition-all"
-              />
             )}
           </div>
 
-          {/* Topic */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[#464552] px-1">
-              Topic <span className="text-[#c7c5d4] font-normal">(optional)</span>
-            </label>
-            <input
-              type="text" value={newTopic} onChange={(e) => setNewTopic(e.target.value)}
-              placeholder="e.g. Calculus Derivatives"
-              className="w-full h-12 bg-[#f3f4ed] rounded-2xl px-4 text-sm font-medium text-[#1a1c18] ring-1 ring-[#c7c5d4] focus:ring-2 focus:ring-[#5150b1] outline-none transition-all"
-            />
-          </div>
+          {/* Topic — hidden when no subjects */}
+          {!noSubjects && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-[#464552] px-1">
+                Topic <span className="text-[#c7c5d4] font-normal">(optional)</span>
+              </label>
+              <input
+                type="text" value={newTopic} onChange={(e) => setNewTopic(e.target.value)}
+                placeholder="e.g. Calculus Derivatives"
+                className="w-full h-12 bg-[#f3f4ed] rounded-2xl px-4 text-sm font-medium text-[#1a1c18] ring-1 ring-[#c7c5d4] focus:ring-2 focus:ring-[#5150b1] outline-none transition-all"
+              />
+            </div>
+          )}
 
-          {/* Time pickers */}
-          <div className="flex gap-3">
-            <div className="flex-1 space-y-1.5">
-              <label className="text-xs font-semibold text-[#464552] px-1">Start Time</label>
-              <input
-                type="time" value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)}
-                className="w-full h-12 bg-[#f3f4ed] rounded-2xl px-4 text-sm font-medium text-[#1a1c18] ring-1 ring-[#c7c5d4] focus:ring-2 focus:ring-[#5150b1] outline-none transition-all"
-              />
+          {/* Time pickers — hidden when no subjects */}
+          {!noSubjects && (
+            <div className="flex gap-3">
+              <div className="flex-1 space-y-1.5">
+                <label className="text-xs font-semibold text-[#464552] px-1">Start Time</label>
+                <input
+                  type="time" value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)}
+                  className="w-full h-12 bg-[#f3f4ed] rounded-2xl px-4 text-sm font-medium text-[#1a1c18] ring-1 ring-[#c7c5d4] focus:ring-2 focus:ring-[#5150b1] outline-none transition-all"
+                />
+              </div>
+              <div className="flex-1 space-y-1.5">
+                <label className="text-xs font-semibold text-[#464552] px-1">End Time</label>
+                <input
+                  type="time" value={newEndTime} onChange={(e) => setNewEndTime(e.target.value)}
+                  className="w-full h-12 bg-[#f3f4ed] rounded-2xl px-4 text-sm font-medium text-[#1a1c18] ring-1 ring-[#c7c5d4] focus:ring-2 focus:ring-[#5150b1] outline-none transition-all"
+                />
+              </div>
             </div>
-            <div className="flex-1 space-y-1.5">
-              <label className="text-xs font-semibold text-[#464552] px-1">End Time</label>
-              <input
-                type="time" value={newEndTime} onChange={(e) => setNewEndTime(e.target.value)}
-                className="w-full h-12 bg-[#f3f4ed] rounded-2xl px-4 text-sm font-medium text-[#1a1c18] ring-1 ring-[#c7c5d4] focus:ring-2 focus:ring-[#5150b1] outline-none transition-all"
-              />
-            </div>
-          </div>
+          )}
 
           {/* Buttons */}
           <div className="flex gap-3 pt-2">
             <button onClick={closeSheet} className="flex-1 py-3.5 rounded-full border border-[#c7c5d4] text-[#464552] text-sm font-bold active:scale-95 transition-transform">
               Cancel
             </button>
-            <button
-              onClick={saveSession}
-              disabled={saving || !newSubject.trim()}
-              className="flex-1 py-3.5 rounded-full bg-[#5150b1] text-white text-sm font-bold shadow-lg active:scale-95 transition-transform disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {saving && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-              {saving ? "Saving…" : "Add Session"}
-            </button>
+            {noSubjects ? (
+              /* ── Go to Subjects shortcut ── */
+              <button
+                onClick={() => { closeSheet(); navigate("/subjects"); }}
+                className="flex-1 py-3.5 rounded-full bg-[#5150b1] text-white text-sm font-bold shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-1.5"
+              >
+                <Icon name="add" className="text-[16px]" />
+                Add Subject
+              </button>
+            ) : (
+              <button
+                onClick={saveSession}
+                disabled={saving || !newSubject.trim()}
+                className="flex-1 py-3.5 rounded-full bg-[#5150b1] text-white text-sm font-bold shadow-lg active:scale-95 transition-transform disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {saving && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                {saving ? "Saving…" : "Add Session"}
+              </button>
+            )}
           </div>
         </div>
       </div>
